@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nsclc-regimen-mil"
+version = "0.1.0"
+description = "Research-only Final159 NSCLC scRNA-seq regimen-conditioned MIL inference"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]

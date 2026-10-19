@@ -1,0 +1,9 @@
+torch==2.9.0
+numpy==2.3.4
+scipy==1.16.3
+pandas==2.3.3
+h5py==3.16.0
+anndata==0.12.6
+scanpy==1.12.3
+scvi-tools==1.4.0.post1
+scikit-learn==1.9.0

@@ -1,0 +1,11 @@
+treatment_index,Treatment
+0,Camrelizumab_Carboplatin + Abraxane
+1,Camrelizumab_No
+2,Nivolumab_Carboplatin + Abraxane
+3,Pembrolizumab_Carboplatin + Abraxane
+4,Pembrolizumab_Carboplatin + Pemetrexed
+5,Sintilimab_Carboplatin + Abraxane
+6,Sintilimab_Carboplatin + Pemetrexed
+7,Tislelizumab_Carboplatin + Abraxane
+8,Tislelizumab_Carboplatin + Pemetrexed
+9,Tislelizumab_Cisplatin + Abraxane

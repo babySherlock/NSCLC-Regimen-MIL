@@ -1,0 +1,13 @@
+{
+  "temperature": 2.694518116553647,
+  "bias": -0.12681018146502662,
+  "threshold": 0.6000000000000002,
+  "threshold_objective": "accuracy",
+  "threshold_training_score": 0.7884615384615384,
+  "n_calibration_original_oof_patients": 156,
+  "fitted_from": "/data/gj/project/SCVI/MIL_10Regimen_GSE207422_Augment3_PairedNested5fold_FIXED_v2/final_model_159/tables/verified_augmented_OOF156.csv",
+  "calibrator_training": "held-out original156 augmented-model OOF logits",
+  "transfer_to_full159_checkpoint": "exploratory; calibration on final159 itself not independently validated",
+  "decision_rule": "response score >= threshold",
+  "do_not_claim": "clinical treatment recommendation or externally validated probability"
+}
