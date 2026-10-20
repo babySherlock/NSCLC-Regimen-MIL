@@ -113,3 +113,26 @@ If the matrix already contains log1p-normalized expression *matching the model's
 This is a **research-only**, observational-data-derived pipeline, not an approved diagnostic tool or a basis for prescribing treatment. Cross-platform effects, cell selection, cell-type composition, unknown gene identifiers, batch structure, normalization differences, and synthetic-cell assumptions can change the output. The released code does not establish transfer performance on unseen bulk-only patients.
 
 Only distribute pretrained checkpoints, derived centroids, reference registries, and example data when their source licenses and privacy implications permit release. The repository does not include original patient-level expression matrices. Add the applicable paper, accession, model attribution, and a chosen license after checking permissions.
+
+## Historical cosine similarity and TF-target evidence (optional)
+
+After cell-type annotation and Final159 scoring, users with access to an **authorized private reference atlas** can additionally retrieve nearest historical patients and subtype-specific TF-target regulon evidence using the `nearest_tf` command. The reference atlas is built **once** from the 156-patient patientwise AUCell/MIL notebook; it is not created or retrained during query inference.
+
+```bash
+python -m nsclc_regimen_mil.nearest_tf \
+  --input /path/to/your_singlecell.h5ad \
+  --patient-id Query01 \
+  --model-dir models/mil_final159 \
+  --atlas-dir /path/to/authorized/Private_Atlas_156_PatientWise_v1 \
+  --layer X --scale log1p \
+  --max-cells 1024 \
+  --output-dir outputs/nearest_tf
+```
+
+`--scale log1p` is valid **only** when your query data have the training-compatible preprocessing. With raw counts, use `--scale counts --target-sum YOUR_VERIFIED_TRAINING_TARGET`. For multiple patients, use `--patient-col YOUR_OBS_COLUMN` instead of `--patient-id`.
+
+The command additionally produces `regimen_exact_scores.csv`, calculated from **all** eligible regimen-specific historical R and NR patient embeddings, not the displayed top-k neighbours. It also produces `nearest_historical_patients.csv`, `candidate_TF_regulons.csv`, `candidate_TF_target_edges.csv`, and `TF_evidence_coverage.csv`. Candidate TFs and targets are retrieved **historical associations**, not experimentally confirmed drivers for the query patient. Similarities are restricted to reference patients who actually received each candidate regimen, and the reference does not establish causal benefit from alternate therapies.
+
+For details, see [REFERENCE_ATLAS_GUIDE.md](REFERENCE_ATLAS_GUIDE.md). The 156 patient-derived records are **not part of this public repository** until redistribution permissions and privacy review explicitly permit release. These records may be kept in a separate private repository or provided under controlled access.
+
+The reference bank lives in a separately controlled Private repository (`babySherlock/NSCLC-Regimen-MIL-PrivateAtlas`). Access to the public CLI does not grant access to the historical patient-level bank. Use only data that your institution permits uploading or sharing.

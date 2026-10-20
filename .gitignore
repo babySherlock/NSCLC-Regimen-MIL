@@ -18,3 +18,11 @@ outputs/*
 /data/
 /private/
 private_reference_cache/
+
+# Never stage historical patient-level atlas in public repo
+reference_patient_embeddings.npz
+reference_patient_regulons.csv.gz
+reference_regulon_targets.csv.gz
+atlas_manifest_patientwise.json
+analysis_config.json
+NSCLC-Regimen-MIL-PrivateAtlas/
