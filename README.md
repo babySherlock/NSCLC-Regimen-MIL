@@ -70,6 +70,52 @@ If the counts are stored in `adata.X`, replace `--layer counts` with `--layer X`
 
 **Input:** the **cell × gene H5AD**, not the annotation CSV or bulk proportions. Genes are automatically aligned to the model's fixed 28,742-gene vocabulary; missing genes are zero-filled. Use the genuine query cell matrix, not the scANVI latent embedding.
 
+
+### Gene alignment of new patient datasets (automatic, but verify first)
+
+The Final159 MIL model uses a **fixed ordered vocabulary of 28,742 genes**, stored in `models/mil_final159/final_multihead_MIL_gene_order.csv` (column `gene`). A query H5AD **does not need to have its columns manually reordered**: `predict.py` and `nearest_tf.py` use `adata.var_names` (the H5AD `/var` index) to find each required gene, remap columns **into model order**, zero-fill missing model genes and omit query-only genes. The original query file is not overwritten, and cell/patient ordering is retained.
+
+**Requirements and caveats:**
+- Gene IDs must use the **same naming system** as the model vocabulary (e.g. HGNC symbols versus Ensembl IDs). This package does **not** perform automatic Ensembl-to-symbol conversion, species ortholog mapping, case correction, or alias resolution. Check ID systems before inferring. The CLI rejects duplicate query `var_names`; resolve duplicates or mapping collisions carefully, without arbitrarily discarding expression.
+- **Missing model genes are filled with numerical zeros as input placeholders**; this is not evidence of true zero biological expression. Extra query genes are omitted from the final model feature matrix.
+- Inspect the matched-gene count and `matched / 28,742` coverage. The CLI default `--min-gene-coverage 0.60` is only a *minimum execution guard*, **not a validated quality or predictive-accuracy threshold**. A higher user-defined threshold (e.g. `0.90`) may be used to flag incomplete data, but no cutoff guarantees transferable accuracy.
+- **Expression preprocessing is a separate requirement from gene ordering.** In `--scale counts` mode, the implemented code normalizes each cell across **all genes present in the query counts matrix** to the user-specified, **verified training-compatible** `--target-sum`, then applies `log1p` and aligns to the model gene order. Do not first truncate the counts matrix to model genes unless that matches the validated training protocol. In `--scale log1p` mode, input values must already be normalized compatibly; the code does not re-normalize them. The exact training normalization target remains to be verified; do not assume 3,565 or 10,000 is certified.
+
+**Read-only gene-coverage audit (before prediction):**
+
+```bash
+cd NSCLC-Regimen-MIL
+python - <<'PY'
+import pandas as pd
+import anndata as ad
+
+query_path = "/path/to/new_patient.h5ad"  # change this
+reference_genes = pd.Index(
+    pd.read_csv("models/mil_final159/final_multihead_MIL_gene_order.csv")["gene"].astype(str)
+)
+adata = ad.read_h5ad(query_path, backed="r")
+try:
+    query_genes = pd.Index(adata.var_names.astype(str))
+    if not query_genes.is_unique:
+        raise ValueError("Duplicate query gene IDs: inspect /var before prediction")
+    indexer = query_genes.get_indexer(reference_genes)
+    n_matched = int((indexer >= 0).sum())
+    print(f"Cells: {adata.n_obs} | Query genes: {len(query_genes)}")
+    print(f"Model genes matched: {n_matched}/{len(reference_genes)} ({n_matched / len(reference_genes):.2%})")
+    print("Already in identical order:", query_genes.equals(reference_genes))
+    print("First missing model genes:", reference_genes[indexer < 0][:20].tolist())
+    print("First model gene IDs:", reference_genes[:10].tolist())
+    print("First query gene IDs:", query_genes[:10].tolist())
+    print("Layers available:", list(adata.layers.keys()))
+finally:
+    if getattr(adata, "isbacked", False):
+        adata.file.close()
+PY
+```
+
+If gene coverage is unexpectedly low, investigate gene identifiers, reference assembly and preprocessing **before** running the model. For example, with an already training-compatible `log1p` H5AD, use `--layer X --scale log1p --min-gene-coverage 0.90` (the `0.90` here is a conservative **user-selected** gate, not a validated threshold). The same automatic alignment and coverage checks apply to historical TF retrieval through `nearest_tf.py`.
+
+
 ```bash
 python -m nsclc_regimen_mil.predict \
   --input /path/to/query_cells.h5ad \
