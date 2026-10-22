@@ -2,11 +2,15 @@
 
 This optional module adds a **new cancer-specific model**; it **does not overwrite** the pretrained NSCLC Final159 model. The exported reference bank is made from *the actual treated responder/non-responder patients in the custom training set*, using the exact newly-trained checkpoint.
 
-## 0. Install the module in your existing checkout
+## 0. Install from GitHub
 
-Unzip `custom_regimen_mil_patch_v2.zip` in the root of `NSCLC-Regimen-MIL` (it includes `src/nsclc_regimen_mil/custom.py`). The existing `src/nsclc_regimen_mil/model.py` is reused unchanged. Then run:
+The custom module is included in the public repository at `src/nsclc_regimen_mil/custom.py`. You no longer need a separate ZIP patch. In a fresh checkout, clone the repository; in an existing checkout, pull the latest `main` branch:
 
 ```bash
+git clone https://github.com/babySherlock/NSCLC-Regimen-MIL.git
+cd NSCLC-Regimen-MIL
+# Or, if already cloned: git pull --ff-only
+python -m pip install -r requirements.txt
 python -m pip install -e . --no-deps
 python -m nsclc_regimen_mil.custom --help
 ```
