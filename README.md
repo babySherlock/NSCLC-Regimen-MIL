@@ -1,10 +1,57 @@
 # NSCLC-Regimen-MIL
 
-**A user-oriented, three-stage workflow for exploring treatment-response signals in new patient transcriptomic data.** This repository distributes pretrained Final159 treatment-conditioned, four-head Attention MIL weights and a separate scANVI reference mapping model. It is intended for **inference, not reproduction of model training or paper benchmarks**.
+**Treatment-conditioned, four-head attention MIL for research-use-only patient-level response scoring.** The repository now supports two separate workflows: (A) scoring with the released **NSCLC Final159 pretrained model**, and (B) **training a new cancer-specific model** from labelled scRNA-seq patients, then scoring genuinely new patients with that model. Custom training is an experimental fit-and-save workflow; it does **not** reproduce the paper's nested cross-validation or establish clinical benefit.
 
-> **Workflow:** Bulk RNA-seq deconvolution → scANVI reference mapping → patient-level MIL scoring.
+> **Workflow A — pretrained NSCLC:** real single-cell H5AD → optional scANVI reference mapping → frozen Final159 MIL scoring. Bulk-only reconstruction requires a separate validated workflow.
+>
+> **Workflow B — any supported cancer cohort:** labelled patient-level scRNA-seq H5AD → `create_model()` → saved custom checkpoint + regimen-specific R/NR reference bank → unseen patient H5AD → `predict_custom()` → Exact R−NR regimen scores.
 >
 > **Important data constraint:** Standard bulk deconvolution estimates **cell-type proportions**, not individual cells or a cell × gene matrix. Neither scANVI nor this MIL implementation can use a proportions table directly. For bulk-only patients, a *separately validated, reference-guided cell-level reconstruction / pseudo-bag construction* step is required between deconvolution and scANVI/MIL. **That reconstruction and the deconvolution runner are not yet included in this repository.** The available CLI works today with genuine single-cell counts.
+
+## New: train your own cancer-type model and score unseen patients
+
+The optional `nsclc_regimen_mil.custom` module reuses the four-head gated-attention architecture but **trains a new checkpoint**. It does not reuse the pretrained NSCLC parameters or require ten regimens. Treatment vocabulary and gene order are learned from the **training cohort** and saved for future inference.
+
+**Training input** is a real single-cell H5AD with raw integer-like UMI counts in `layers["counts"]` (or `X`) and three patient-consistent `obs` columns: `Patient`, `Treatment` (actual received regimen), and `Response` (`R`/`NR`; `response_binary` also supported). Each eligible regimen needs at least **two R and two NR independent patients**; this is a program guard, not a sample-size adequacy claim.
+
+```bash
+# 1. Train once using labelled patients
+python -m nsclc_regimen_mil.custom create \
+  --input /path/to/train.h5ad \
+  --out-dir models/my_cancer \
+  --patient-col Patient \
+  --treatment-col Treatment \
+  --response-col Response \
+  --layer counts \
+  --target-sum 10000 \
+  --epochs 35 \
+  --cells-per-bag 256 \
+  --pool-cells 1024 \
+  --device cpu
+
+# 2. Score genuinely new patients; no response or treatment labels are needed
+python -m nsclc_regimen_mil.custom score \
+  --input /path/to/new_patients.h5ad \
+  --model-dir models/my_cancer \
+  --patient-col Patient \
+  --layer counts \
+  --max-cells 1024 \
+  --repeats 3 \
+  --output outputs/my_cancer_scores.csv \
+  --device cpu
+```
+
+For a **single-patient** H5AD without an `obs["Patient"]` column, replace `--patient-col Patient` in the score command with `--patient-id NewPatient01`. Change `--layer counts` to `--layer X` when raw counts are in `X`. A CUDA-enabled PyTorch installation may use `--device cuda`.
+
+**Saved model directory:** `custom_mil.pt`, `gene_order.csv`, `treatment_vocabulary.csv`, `reference_centroids.npz`, `reference_coverage.csv`, and `training_metadata.json`. **Keep these files together.** The checkpoint and reference bank are checked for consistency, input genes are automatically aligned, and query patient IDs found in training are rejected. The new patient inherits the saved normalization target; do **not** supply `--target-sum` when scoring.
+
+**Output:** `outputs/my_cancer_scores.csv` contains one row per patient × trained regimen, with `Exact_RminusNR`, `Score_SD`, `Exact_rank`, `Mean_R_similarity`, `Mean_NR_similarity`, and separate `raw_R_score`. The score is the mean cosine similarity to historical regimen-matched **R** patients minus the corresponding mean for **NR** patients, not a calibrated response probability or causal treatment benefit. The companion `*_repeats.csv` stores per-repeat results.
+
+**Test the module:** `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python test_custom_model.py`. The synthetic end-to-end test passed, and the training/score commands were also run successfully on a TNBC cohort (28 training patients, nine unseen test patients, three regimens, 15,989 genes; 27 score rows and 100% matched model genes). These are **software operation checks**, not evidence of independent clinical validity.
+
+For full input requirements, new-patient examples, integrity checks, and limitations, see **[CUSTOM_MODEL_GUIDE.md](CUSTOM_MODEL_GUIDE.md)**. Do not commit patient-level H5ADs, locally trained checkpoints or `reference_coverage.csv` without data-sharing permission.
+
+---
 
 ## 1. Which data do you have?
 
@@ -79,7 +126,7 @@ The Final159 MIL model uses a **fixed ordered vocabulary of 28,742 genes**, stor
 - Gene IDs must use the **same naming system** as the model vocabulary (e.g. HGNC symbols versus Ensembl IDs). This package does **not** perform automatic Ensembl-to-symbol conversion, species ortholog mapping, case correction, or alias resolution. Check ID systems before inferring. The CLI rejects duplicate query `var_names`; resolve duplicates or mapping collisions carefully, without arbitrarily discarding expression.
 - **Missing model genes are filled with numerical zeros as input placeholders**; this is not evidence of true zero biological expression. Extra query genes are omitted from the final model feature matrix.
 - Inspect the matched-gene count and `matched / 28,742` coverage. The CLI default `--min-gene-coverage 0.60` is only a *minimum execution guard*, **not a validated quality or predictive-accuracy threshold**. A higher user-defined threshold (e.g. `0.90`) may be used to flag incomplete data, but no cutoff guarantees transferable accuracy.
-- **Expression preprocessing is a separate requirement from gene ordering.** In `--scale counts` mode, the implemented code normalizes each cell across **all genes present in the query counts matrix** to the user-specified, **verified training-compatible** `--target-sum`, then applies `log1p` and aligns to the model gene order. Do not first truncate the counts matrix to model genes unless that matches the validated training protocol. In `--scale log1p` mode, input values must already be normalized compatibly; the code does not re-normalize them. The exact training normalization target remains to be verified; do not assume 3,565 or 10,000 is certified.
+- **Expression preprocessing is a separate requirement from gene ordering.** In `--scale counts` mode, the implemented code normalizes each cell across **all genes present in the query counts matrix** to the user-specified, **verified training-compatible** `--target-sum`, then applies `log1p` and aligns to the model gene order. Do not first truncate the counts matrix to model genes unless that matches the validated training protocol. In `--scale log1p` mode, input values must already be normalized compatibly; the code does not re-normalize them. An audit of 256 cells from the original NSCLC H5AD was consistent with a pre-log1p normalization target of **3,565**. This does not establish cross-cohort preprocessing equivalence; verify input library and gene-space semantics.
 
 **Read-only gene-coverage audit (before prediction):**
 
@@ -122,7 +169,7 @@ python -m nsclc_regimen_mil.predict \
   --patient-col Patient \
   --layer counts \
   --scale counts \
-  --target-sum VERIFIED_TRAINING_TARGET_SUM \
+  --target-sum 3565 \
   --model-dir models/mil_final159 \
   --reference-centroids models/mil_final159/reference_centroids.npz \
   --max-cells 1536 \
@@ -130,7 +177,7 @@ python -m nsclc_regimen_mil.predict \
   --output outputs/regimen_scores.csv
 ```
 
-Replace `VERIFIED_TRAINING_TARGET_SUM` with a **numerical library-size target verified against the training preprocessing**. The released code intentionally requires this value for raw counts. A prior external demonstration used 3565 as an **unverified approximation**, which should not be presented as the established training setting.
+For the released Final159 NSCLC checkpoint, a 256-cell audit of its source training H5AD supports the **3,565** pre-log1p target. Use this example only when query raw-UMI preprocessing and library-size semantics match the reference. The separate **custom cancer-type trainer** uses its own configurable target (e.g. 10,000), saved with each new model and reused automatically at scoring time.
 
 If the matrix already contains log1p-normalized expression *matching the model's original preprocessing*, use `--scale log1p --layer X` and omit `--target-sum`. For a one-patient file without `obs['Patient']`, omit `--patient-col` and use `--patient-id Patient01`.
 
@@ -153,6 +200,9 @@ If the matrix already contains log1p-normalized expression *matching the model's
 | `models/scanvi_reference/` | Pretrained scANVI reference model |
 | `src/nsclc_regimen_mil/annotate_scanvi.py` | Single-cell reference mapping CLI |
 | `src/nsclc_regimen_mil/predict.py` | Patient-level ten-regimen scoring CLI |
+| `src/nsclc_regimen_mil/custom.py` | Custom cancer-type model training and new-patient scoring (`create` / `score`) |
+| `CUSTOM_MODEL_GUIDE.md` | Custom training/scoring instructions and output interpretation |
+| `test_custom_model.py` | Synthetic end-to-end custom model checks |
 
 ## 7. Limitations, privacy, and citation
 
