@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nsclc-regimen-mil"
 version = "0.1.0"
-description = "Research-only Final159 NSCLC scRNA-seq regimen-conditioned MIL inference"
+description = "Research-only treatment-conditioned MIL for NSCLC inference and custom cancer training"
 requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
